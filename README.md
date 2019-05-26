@@ -11,15 +11,21 @@ Get an good overview of following components:
 
 * pysc2 API (Input, Output, how to play replays, minigames)
 
-* Reinforcement Learning (Q-Learning, delayed reward)
+* Reinforcement Learning (for example: Q-Learning, delayed reward)
 
-The purpose of the goal is to be able to identify reasonable learning and implementation goals over the coming weeks. No deep understanding is required but one should at least be able to have a grip about how to proceed the following week.
+The purpose of the goal is to be able to identify reasonable learning and implementation goals over the coming weeks. No deep understanding is required but one should at least be able to have a grip about how to proceed the following week. Concretely, this means that one should be able to set implementaion goals that includes the required learning
 
 
 ## Environment and Library
 
-* Tensorflow 
+* Tensorflow ( https://www.tensorflow.org/ )
 
-* pysc2
+* pysc2 ( https://github.com/deepmind/pysc2 )
 
-* OpenAi gym
+* OpenAi gym ( https://gym.openai.com/ )
+
+The environemnts can all be installed through the pip command:
+
+```
+pip install tensorflow pysc2 gym
+```
