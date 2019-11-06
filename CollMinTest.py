@@ -1,15 +1,15 @@
 from pysc2.agents import base_agent
-from absl import app
-import random
-from pysc2.lib import actions, features, units
-import tensorflow as tf
-
 from pysc2.env import sc2_env
+from pysc2.lib import actions, features, units
+from absl import app
+import tensorflow as tf
+import random
+import pdb
 
-class ZergAgent(base_agent.BaseAgent):
+class Agent(base_agent.BaseAgent):
     
     def __init__(self):
-        super(ZergAgent,self).__init__()
+        super(Agent,self).__init__()
 
         self.attack_coordinates = None
 
@@ -31,21 +31,17 @@ class ZergAgent(base_agent.BaseAgent):
         return [unit for unit in obs.observation.feature_units if unit.unit_type == unit_type]
 
     def step(self, obs):
-        super(ZergAgent, self).step(obs)
-        ##init_enemy pos
+        super(Agent, self).step(obs)
+        ##init select marines
         if obs.first():
-            player_y, player_x = (obs.observation.feature_minimap.player_relative == features.PlayerRelative.SELF).nonzero()
-
-            xmean = player_x.mean()
-            ymean = player_y.mean()
-
-            if xmean <= 31 and ymean <= 31:
-                self.attack_coordinates = (49, 49)
-            else:
-                self.attack_coordinates = (12, 16)
-
-        zerglings = self.get_units_by_type(obs,units.Zerg.Zergling)
+            marines = self.get_units_by_type(obs,units.Terran.Marine)
+            if self.can_do(obs,actions.FUNCTIONS.select_army.id):
+                if self.unit_type_is_selected(obs,units.Terran.Marine):
+                    return actions.FUNCTIONS.select_army("select")
+        
 #Attack with Zergling
+        if self.unit_type_is_selected(obs,units.Terran.Marine):
+            return actions.FUNCTIONS.select_army("select")
         if(len(zerglings) > 20):
             
             if self.unit_type_is_selected(obs, units.Zerg.Zergling):
@@ -88,19 +84,16 @@ class ZergAgent(base_agent.BaseAgent):
         return actions.FUNCTIONS.no_op()
 
 def main(unused_argv):
-    agent = ZergAgent()
+    agent = Agent()
     try:
         while True:
             with sc2_env.SC2Env(
-                    map_name="Simple128",
-            players=[sc2_env.Agent(sc2_env.Race.zerg), 
-                sc2_env.Bot(sc2_env.Race.random,
-                sc2_env.Difficulty.very_hard)],
-                agent_interface_format=features.AgentInterfaceFormat(
-                feature_dimensions=features.Dimensions(screen=84, minimap=64),use_feature_units=True),
-                step_mul=16,
-                game_steps_per_episode=0,           
-                visualize=True) as env:            
+            map_name="CollectMineralShards",
+            agent_interface_format=features.AgentInterfaceFormat(
+            feature_dimensions=features.Dimensions(screen=84, minimap=64),use_feature_units=True),
+            step_mul=16,
+            game_steps_per_episode=0,           
+            visualize=True) as env:        
                 agent.setup(env.observation_spec(), env.action_spec())
 
                 timesteps = env.reset()
