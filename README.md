@@ -2,18 +2,20 @@
 
 This repository is made for documenting the learning and progress of creating a Starcraft 2 bot for the Artificial Overmind competition.  ( https://artificial-overmind.reaktor.com/?fbclid=IwAR2LkNVR3qdLrUp2_Jv8hQBYnnWVqMrudKR0Ttj8gZ9fY0DsP0P1HyN0RRs )
 
+The repository is structured in a way such that all the sub repo is effort of learning exercises (including simple problem formulation) that have been conducted.
+Some of them lack "What I learned" esque documentation of the result and that might be good to have, but most learning and notes exist on my NOTION account.
+
+When this repo get a bit more flesh on the bone, the documentattion should be updated.
 
 ## Todo List
 
-### Todo until **29th May**
-
-Get an good overview of following components:
+* Get a better understanding at PyTorch.
 
 * pysc2 API (Input, Output, how to play replays, minigames)
 
 * Reinforcement Learning (for example: Q-Learning, delayed reward)
 
-The purpose of the goal is to be able to identify reasonable learning and implementation goals over the coming weeks. No deep understanding is required but one should at least be able to have a grip about how to proceed the following week. Concretely, this means that one should be able to set implementaion goals that includes the required learning
+
 
 
 ## Environment and Library
@@ -22,6 +24,7 @@ The purpose of the goal is to be able to identify reasonable learning and implem
 
 * pysc2 ( https://github.com/deepmind/pysc2 )
 
+* PyTorch ( )
 * OpenAi gym ( https://gym.openai.com/ )
 
 The environemnts can all be installed through the pip command:
