@@ -20,6 +20,9 @@ When this repo get a bit more flesh on the bone, the documentattion should be up
 
 ## Environment and Library
 
+
+Note to myself: For SpinningUpRL tutorial and tests, I'm using Python3.6 Conda Environment.
+
 * Tensorflow ( https://www.tensorflow.org/ )
 
 * pysc2 ( https://github.com/deepmind/pysc2 )

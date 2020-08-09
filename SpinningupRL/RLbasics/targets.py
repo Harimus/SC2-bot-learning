@@ -1,17 +1,12 @@
-
-
 from collections import defaultdict, Counter
 """
 Standalone libraries for targets used in Value function approximation for Policy Gradient methods.
 The input of each function is assumed to be list of (state, action, reward, next_state) tuples pairs
-The Target in value function approximation is the substitute of "true value function" that the gradiend descent
+The Target in value function approximation is the substitute of "true value function" that the gradient descent
 optimizes toward.
 
 Notions: Episode is a list that contains (state, action, reward, next_state) tuples
 """
-
-
-
 
 def discounted_reward(episode, gamma=0.99):
     """For MonteCarlo, the target is just Gt = Discount reward!"""
