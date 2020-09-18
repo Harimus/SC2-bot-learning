@@ -57,7 +57,6 @@ def td_lambda_target(episode, value_function, td_lambda=0.1, gamma=0.99):
     return Gt_lambda
 
 
-
 def td_lambda_target_backward(episode, value_function, td_lambda=0.1, gamma=0.99):
     """Similar to td_lambda_target but BACKWARDS TD(lambda). the LAST ELEMENT of input episode is the
     G_t time point the return point towards. Returns the TD-error times eligibility trace for each step (state)
