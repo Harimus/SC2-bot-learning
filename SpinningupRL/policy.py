@@ -58,9 +58,9 @@ class ActorCriticPolicy(nn.Module):
     def __init__(self, observation_space, action_space, hidden_layer=(30, 20), actor=BasicPolicy, critic=fcnn_policy):
         super().__init__()
         # The policy, "actor"
-        self.pi = actor(observation_space, action_space)
+        self.pi = actor(observation_space.shape[0], action_space.n)
         # The critic
-        self.v = critic([observation_space]+list(hidden_layer)+[1])
+        self.v = critic([observation_space.shape[0]]+list(hidden_layer)+[1])
 
     def step(self, obs):
         with torch.no_grad():
