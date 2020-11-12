@@ -1,6 +1,10 @@
+
+import numpy as np
 import torch
 import torch.nn as nn
 from torch.distributions.categorical import Categorical
+from torch.distributions.normal import Normal
+import torch.nn.functional as F
 import gym
 
 """This file contains the Neural network policies. The reason for this being in an independent file is so that
@@ -25,9 +29,10 @@ def fcnn_policy(layer_sizes, activation_function=nn.Tanh, output_activation=nn.I
 
 class BasicPolicy(nn.Module):
 
-    def __init__(self, observation_space, action_space, hidden_layers=(30, 20),  network=fcnn_policy):
+    def __init__(self, observation_space, action_space, hidden_layers=(30, 20),  network=fcnn_policy,
+                 activation=nn.Tanh, output_activation=nn.Identity):
         super().__init__()
-        self.policy = network([observation_space]+list(hidden_layers)+[action_space])
+        self.policy = network([observation_space]+list(hidden_layers)+[action_space], activation_function=activation, output_activation=output_activation)
 
     def get_policy(self, obs):
         logits = self.policy(obs)
@@ -58,7 +63,7 @@ class ActorCriticPolicy(nn.Module):
     def __init__(self, observation_space, action_space, hidden_layer=(30, 20), actor=BasicPolicy, critic=fcnn_policy):
         super().__init__()
         # The policy, "actor"
-        self.pi = actor(observation_space.shape[0], action_space.n)
+        self.pi = actor(observation_space.shape[0], action_space.n, hidden_layers=hidden_layer)
         # The critic
         self.v = critic([observation_space.shape[0]]+list(hidden_layer)+[1])
 
@@ -70,6 +75,61 @@ class ActorCriticPolicy(nn.Module):
 
     def act(self, obs):
         return self.step(obs)[0]
+
+
+class FCNNQFunction(nn.Module):
+    def __init__(self, observation_space, action_space, hidden_layers, activation=nn.ReLU, output_activation=nn.Identity):
+        super().__init__()
+        self.network = fcnn_policy([observation_space.shape[0] + action_space.n]+list(hidden_layers)+[1], activation_function=activation, output_activation=output_activation)
+
+    def forward(self, observation, action):
+        q = self.network(torch.cat([observation, action], dim=-1))
+        return torch.squeeze(q, -1)
+
+
+LOG_STD_MIN = 2
+LOG_STD_MAX = 20
+
+
+class SquashedGaussianFCNNPolicy(nn.Module):
+    def __init__(self, observation_space, action_space, hidden_layers, act_max, act_min, activation=nn.ReLU):
+        super().__init__()
+        self.net = fcnn_policy([observation_space] + list(hidden_layers),
+                               activation_function=activation, output_activation=activation)
+        self.mu = nn.Linear(hidden_layers[-1], action_space)
+        self.log_std= nn.Linear(hidden_layers[-1], action_space)
+        self.act_scale = (act_max+act_min)
+        self.act_const = act_min
+
+    def forawrd(self, obs, deterministic=False, with_logprob=True):
+        net_out = self.net(obs)
+        mu = self.mu(net_out)
+        log_std = self.log_std(net_out)
+        log_std = torch.clamp(log_std, LOG_STD_MIN, LOG_STD_MAX)
+        std = torch.exp(log_std)
+        pi_dist = Normal(mu, std)
+        if deterministic:
+            pi_act = mu
+        else:
+            pi_act = pi_dist.rsample()
+        if with_logprob:
+            logp_pi = pi_dist.log_prob(pi_act).sum(axis=-1)
+            logp_pi -= (2 * (np.log(2) - pi_act - F.softplus(-2 * pi_act))).sum(axis=1)
+        else:
+            logp_pi = None
+        pi_act = torch.tanh(pi_act)
+        pi_act = self.act_scale * pi_act + self.act_const
+        return pi_act, logp_pi
+
+"""The actor critic policy resembles the """
+class SACActorCriticPolicy(nn.Module):
+    def __init__(self, observation_space, action_space, hidden_layer=(30, 20), actor=SquashedGaussianFCNNPolicy,
+                 critic=FCNNQFunction):
+        super().__init__()
+        self.pi = actor(observation_space.shape[0], action_space.shape[0], hidden_layers=hidden_layer,
+                        activation=nn.ReLU)
+        self.q1 = critic(observation_space, action_space, hidden_layer, activation=nn.ReLU)
+        self.q2 = critic(observation_space, action_space, hidden_layer, activation=nn.ReLU)
 
 
 if __name__ == "__main__":
