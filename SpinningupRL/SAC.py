@@ -8,23 +8,29 @@ import torch.nn as nn
 import numpy as np
 from torch.distributions import Distribution, Independent, Normal
 from policy import fcnn_policy
+import matplotlib.pyplot as plt
+from util import plot_mountain_cart
+from tqdm import tqdm
 """Model defined here too, and follows Kaixhin structure rather than Spinningup,
 since it is easier to understand"""
 
-# TODO: Currently the SAC is WITHOUT A TARGET VALUE FUNCTION (with polyak update) so add that after test
-import matplotlib.pyplot as plt
+# TODO: Add reward scaling.
+# TODO:
 import os
 steps, rewards = [], []
-def plot(step, reward, title, epoch=10000):
-  steps.append(step)
-  rewards.append(reward)
-  plt.plot(steps, rewards, 'b-')
-  plt.title(title)
-  plt.xlabel('Steps')
-  plt.ylabel('Rewards')
-  plt.xlim((0, ))
-  plt.ylim((-2000, 0))
-  plt.savefig(os.path.join('results', title + '.png'))
+fig, ax = plt.subplots()
+
+
+def plot(step, reward, title, epoch=1000000):
+    steps.append(step)
+    rewards.append(reward)
+    ax.plot(steps, rewards, 'b-')
+    ax.set_title(title)
+    ax.set_xlabel('Steps')
+    ax.set_ylabel('Rewards')
+    ax.set_xlim((0, epoch))
+    ax.set_ylim((-2000, 0))
+    fig.savefig('./'+title + '.png')
 
 class TanhNormal(Distribution):
     """Copied from Kaixhi"""
@@ -34,18 +40,24 @@ class TanhNormal(Distribution):
 
     def sample(self):
         return torch.tanh(self.normal.sample())
+
     # samples with re-parametrization trick (differentiable)
     def rsample(self):
         return torch.tanh(self.normal.rsample())
 
-    # Calculates log probability of value using the change-of-variables technique (uses log1p = log(1 + x) for extra numerical stability)
+    # Calculates log probability of value using the change-of-variables technique
+    # (uses log1p = log(1 + x) for extra numerical stability)
     def log_prob(self, value):
         inv_value = (torch.log1p(value) - torch.log1p(-value)) / 2  # artanh(y)
-        return self.normal.log_prob(inv_value) - torch.sum(torch.log1p(-value.pow(2) + 1e-6))  # log p(f^-1(y)) + log |det(J(f^-1(y)))|
+        # log p(f^-1(y)) + log |det(J(f^-1(y)))|
+        return self.normal.log_prob(inv_value) - torch.log1p(-value.pow(2) + 1e-6).sum(dim=1)
 
     @property
     def mean(self):
         return torch.tanh(self.normal.mean)
+
+    def get_std(self):
+        return self.normal.stddev
 
 
 LOG_MIN = -20
@@ -62,8 +74,8 @@ class SoftActor(nn.Module):
                                    activation_function=activation_function, output_activation=output_activation)
 
     def forward(self, state: torch.Tensor):
-        mu, log_std = self.network(state).chunk(2)
-        log_std = torch.clamp(log_std, LOG_MIN, LOG_MAX) #to make it not too random/deterministic
+        mu, log_std = self.network(state).chunk(2, dim=-1)
+        log_std = torch.clamp(log_std, LOG_MIN, LOG_MAX)  # to make it not too random/deterministic
         normal = TanhNormal(mu, log_std.exp())
         return normal
 
@@ -80,8 +92,8 @@ class Critic(nn.Module):
         if action is None:
             value = self.network(state)
         else:
-            value = self.network(torch.cat([state, action], dim=1))
-        return value.squeeze(dim=1)
+            value = self.network(torch.cat([state, action], dim=-1))
+        return value.squeeze(dim=-1)
 
 
 class SoftActorCritic(nn.Module):
@@ -103,15 +115,21 @@ class SoftActorCritic(nn.Module):
         self.critic_q2 = Critic(observation_dim=observation_dim, action_dim=action_dim,
                                 hidden_layer_size=hidden_layer_size, activation_function=activation_function,
                                 output_activation=output_activation)
+        self.target_critic_v = deepcopy(self.critic_v)
+        for param in self.target_critic_v.parameters():
+            param.requires_grad = False
+        self.name = "Soft Actor Critic"
 
     def forward(self, state):
         return self.actor(state)
 
-def sac(policy=SoftActorCritic, epoch=10000, gamma=0.99, lam=0.97,
-        actor_lr=1e-3, critic_lr=1e-3, alpha=0.2, buffer_size=1000,
-        off_policy_batch_size=200, reward_scale=5, initial_exploration=10,
-        update_interval=1, test_interval=100):
-    envname = 'MountainCarContinuous-v0'
+
+def sac(policy=SoftActorCritic, epoch=100000, gamma=0.99, polyak=0.995,
+        actor_lr=1e-3, critic_lr=1e-3, alpha=0.2, buffer_size=100000,
+        off_policy_batch_size=128, reward_scale=1, initial_exploration=10000,
+        update_interval=1, test_interval=1000, in_agent=None):
+
+    envname = 'Pendulum-v0'#'MountainCarContinuous-v0'
     env = gym.make(envname)
 
 
@@ -122,85 +140,104 @@ def sac(policy=SoftActorCritic, epoch=10000, gamma=0.99, lam=0.97,
     scaling_const = env.action_space.low[0]
 
     def scale_action(act):
-        return scaling_factor*action + scaling_const
+        return scaling_factor*act + scaling_const
 
-    def test(actor):
-        actor.eval()
-        env = gym.make(envname)
-        state, total_reward, done = env.reset(), 0, False
-        while not done:
-            action = actor(torch.as_tensor(state, dtype=torch.float32))
-            state, reward, done = env.step(scale_action(action)).mean
-            total_reward+=reward
-        actor.train()
+    def test(actor, render=False):
+        with torch.no_grad():
+            actor.eval()
+            env = gym.make(envname)
+            state, total_reward, done = env.reset(), 0, False
+
+            while not done:
+                action = actor(torch.as_tensor(state, dtype=torch.float32)).mean
+                state, reward, done, _ = env.step(scale_action(action.numpy()))
+                total_reward += reward
+                env.render() if render is True else _
+            env.close()
+            #plot_mountain_cart(agent) if render else _
+            actor.train()
         return total_reward
-
-    agent = policy(observation_space, action_space)
-    target_agent = deepcopy(agent)
+    if in_agent is not None:
+        agent = in_agent
+    else:
+        agent = policy(observation_space, action_space, hidden_layer_size=(32, 32), activation_function=nn.Tanh)
 
     actor_optimizer = Adam(agent.actor.parameters(), lr=actor_lr)
     critic_q_optimizer = Adam(list(agent.critic_q1.parameters())+list(agent.critic_q2.parameters()), lr=critic_lr)
     critic_v_optimizer = Adam(agent.critic_v.parameters(), lr=critic_lr)
     replay_buffer = deque(maxlen=buffer_size)
 
-    def update(episodes):
+    def update(episodes, update_target=False):
         states = torch.as_tensor([ep[0] for ep in episodes], dtype=torch.float32)
         actions = torch.as_tensor([ep[1] for ep in episodes], dtype=torch.float32)
+        actions = actions.unsqueeze(-1)
         rewards = torch.as_tensor([ep[2] for ep in episodes], dtype=torch.float32)
         next_states = torch.as_tensor([ep[3] for ep in episodes], dtype=torch.float32)
         is_done = torch.as_tensor([ep[-1] for ep in episodes], dtype=torch.float32)
 
-        target_q = rewards + gamma * (1-is_done) * agent.critic_v(next_states)
+        # Target for V
         pi = agent.actor(states)
         sample_actions = pi.rsample()
-        entropy_component = pi.log_prob(sample_actions)
-        critic_q = torch.min(agent.critic_q2(states, sample_actions.detach()), agent.critic_q1(states, sample_actions.detach()))
-        target_v = critic_q - alpha * entropy_component.detach()
-
-        # Update Q
-        critic_q_loss = (1/2) * ((agent.critic_q1 - target_q)**2).mean() + \
-                        (1/2) * ((agent.critic_q2 - target_q)**2).mean()
-        critic_q_optimizer.zero_grad()
-        critic_q_loss.backwards()
-        critic_q_optimizer.step()
+        entropy_component = alpha * pi.log_prob(sample_actions)
+        critic_q = torch.min(agent.critic_q2(states, sample_actions),
+                             agent.critic_q1(states, sample_actions)).detach()
+        target_v = critic_q - entropy_component.detach()
 
         # Update V
 
-        critic_v_loss = (1/2) * ((agent.critic_v(states) - target_v)**2).mean()
+        critic_v_loss = (agent.critic_v(states) - target_v).pow(2).mean()
         critic_v_optimizer.zero_grad()
-        critic_v_loss.backwards()
+        critic_v_loss.backward()
         critic_v_optimizer.step()
+
+        # Target for Q
+        target_q = rewards + gamma * (1-is_done) * agent.target_critic_v(next_states)
+        # Update Q
+        critic_q_loss = (agent.critic_q1(states, actions) - target_q).pow(2).mean() + \
+                        (agent.critic_q2(states, actions) - target_q).pow(2).mean()
+        critic_q_optimizer.zero_grad()
+        critic_q_loss.backward()
+        critic_q_optimizer.step()
+
 
         # Update Policy
         target_pi = torch.min(agent.critic_q2(states, sample_actions), agent.critic_q1(states, sample_actions))
-        loss_pi = (alpha * entropy_component - target_pi).mean()
+        loss_pi = (entropy_component - target_pi).mean()
         actor_optimizer.zero_grad()
-        loss_pi.backwards()
-
+        loss_pi.backward()
+        actor_optimizer.step()
+        # Update target V
+        for V_param, target_V_param in zip(agent.critic_v.network.parameters(), agent.target_critic_v.network.parameters()):
+            target_V_param.data = polyak * target_V_param.data + (1 - polyak) * V_param.data
 
     state, done = env.reset(), False
-    for i in range(0, epoch):
-        for j in range(0, buffer_size):
-            with torch.no_grad():
-                if i < initial_exploration:
-                    # uniform distribution action taken for better exploration at the beginning roughtly 10%
-                    action = torch.tensor(np.random.rand(action_space)*2 - 1)
-                else:
-                    action = agent(torch.as_tensor(state, dtype=torch.float32)).sample()
-                next_state, reward, done, _ = env.step(scale_action(action))
-                replay_buffer.append( [state, action, reward, next_state, done] )
-                state = next_state
+    progress_bar = tqdm(range(1, epoch+1), unit_scale=1, smoothing=0)
+    for i in progress_bar:
+        with torch.no_grad():
+            if i < initial_exploration:
+                # uniform distribution action taken for better exploration at the beginning roughtly 10%
+                action = torch.tensor(np.random.rand(action_space)*2 - 1)
+            else:
+                action = agent(torch.as_tensor(state, dtype=torch.float32)).sample()
+            next_state, reward, done, _ = env.step(scale_action(action))
+            replay_buffer.append([state, action, reward_scale*reward, next_state, done])
+            state = next_state
+            if done:
+                state = env.reset()
 
-                if done:
-                    env.reset()
-            if i > initial_exploration and i % update_interval == 0:
-                batch = random.sample(replay_buffer, off_policy_batch_size)
-                update(batch)
+        if i > initial_exploration and i % update_interval == 0:
+            batch = random.sample(replay_buffer, off_policy_batch_size)
+            update(batch, True)
 
-            if i > initial_exploration and i % test_interval == 0:
-                total_reward = test(agent)
-                plot(i, total_reward, "SoftActorCritic")
-
+        if i > initial_exploration and i % test_interval == 0:
+            total_reward = test(agent, render=True if i % (epoch/5) == 0 else False)
+            plot(i, total_reward, "SoftActorCritic", epoch)
+            if i % (epoch / 100) == 0:
+                progress_bar.set_description('Step: %i | Reward: %f' % (i, total_reward))
+    plt.show()
+    return agent
 
 if __name__ == '__main__':
+    #ag = sac(epoch=10000, reward_scale=1, alpha=0.4)
     ag = sac()
+    #ag = sac(in_agent=ag)
