@@ -29,7 +29,7 @@ def plot(step, reward, title, epoch=1000000):
     ax.set_xlabel('Steps')
     ax.set_ylabel('Rewards')
     ax.set_xlim((0, epoch))
-    ax.set_ylim((-2000, 0))
+    ax.set_ylim((-2000, 100))
     fig.savefig('./'+title + '.png')
 
 class TanhNormal(Distribution):
@@ -129,18 +129,22 @@ def sac(policy=SoftActorCritic, epoch=100000, gamma=0.99, polyak=0.995,
         off_policy_batch_size=128, reward_scale=1, initial_exploration=10000,
         update_interval=1, test_interval=1000, in_agent=None):
 
-    envname = 'Pendulum-v0'#'MountainCarContinuous-v0'
+    envname = 'MountainCarContinuous-v0' #'Pendulum-v0'
     env = gym.make(envname)
 
 
     observation_space = env.observation_space.shape[0]
     action_space = env.action_space.shape[0]
     # Scaling of action
-    scaling_factor = env.action_space.high[0] - env.action_space.low[0]
-    scaling_const = env.action_space.low[0]
+    scaling_factor = (env.action_space.high[0] - env.action_space.low[0])/2
+    scaling_const = (env.action_space.high[0] + env.action_space.low[0])/2
 
     def scale_action(act):
-        return scaling_factor*act + scaling_const
+        scaled_act= scaling_factor*act + scaling_const
+        if (scaled_act > env.action_space.high[0])[0] or (scaled_act < env.action_space.low[0])[0]:
+            print("wtf: ", act)
+        return np.clip(scaling_factor*act + scaling_const,
+                        env.action_space.low[0], env.action_space.high[0])
 
     def test(actor, render=False):
         with torch.no_grad():
@@ -219,12 +223,12 @@ def sac(policy=SoftActorCritic, epoch=100000, gamma=0.99, polyak=0.995,
                 action = torch.tensor(np.random.rand(action_space)*2 - 1)
             else:
                 action = agent(torch.as_tensor(state, dtype=torch.float32)).sample()
-            next_state, reward, done, _ = env.step(scale_action(action))
+            next_state, reward, done, _ = env.step(scale_action(action.numpy()))
             replay_buffer.append([state, action, reward_scale*reward, next_state, done])
-            state = next_state
             if done:
                 state = env.reset()
-
+            else:
+                state = next_state
         if i > initial_exploration and i % update_interval == 0:
             batch = random.sample(replay_buffer, off_policy_batch_size)
             update(batch, True)
@@ -239,5 +243,5 @@ def sac(policy=SoftActorCritic, epoch=100000, gamma=0.99, polyak=0.995,
 
 if __name__ == '__main__':
     #ag = sac(epoch=10000, reward_scale=1, alpha=0.4)
-    ag = sac()
+    ag = sac(alpha=0.8, reward_scale=5)
     #ag = sac(in_agent=ag)

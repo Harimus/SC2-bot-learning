@@ -15,12 +15,9 @@ def plot_Q_value(ax, agent_critic_Q, states, actions):
         for x in states[0]:
             for y in states[1]:
                 for z in actions:
-                   # in_state = torch.as_tensor([x, y])
-                   # in_action = torch.as_tensor([z])
-                   # q = agent_critic_Q(in_state, in_action)
-                    X.append(x), Y.append(y), Z.append(z)#, Q.append(q)
+                    X.append(x), Y.append(y), Z.append(z)
         in_state = torch.as_tensor(list(zip(X, Y)), dtype=torch.float32)
-        in_action= torch.as_tensor(Z, dtype=torch.float32).unsqueeze(-1)
+        in_action = torch.as_tensor(Z, dtype=torch.float32).unsqueeze(-1)
         Q = agent_critic_Q(in_state, in_action).numpy()
 
     return ax.scatter(X, Y, Z, c=Q, cmap=plt.hot())
