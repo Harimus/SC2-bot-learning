@@ -82,6 +82,23 @@ def plot_mountain_cart(agent):
     cbar_pi.ax.set_ylabel('std')
 
 
+def save_model_checkpoint(model: torch.nn.Module, optimizer: torch.optim.Optimizer, criterion, epochs, replay_buffer, filename='./saved_model.pth'):
+    torch.save({
+        'epoch': epochs,
+        'model_state_dict': model.state_dict(),
+        'optimizer_state_dict': optimizer.state_dict(),
+        'loss': criterion,
+        'replay_buffer': replay_buffer
+                },  filename)
+
+
+def load_model_checkpoint(model: torch.nn.Module, optimizer: torch.optim.Optimizer, filename='./saved_model.pth'):
+    checkpoint = torch.load(filename)
+    model.load_state_dict(checkpoint['model_state_dict'])
+    optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+    return model, optimizer, checkpoint['loss'], checkpoint['epoch'], checkpoint['replay_buffer']
+
+
 if __name__ == '__main__':
     from SAC import SoftActorCritic
     envname = 'MountainCarContinuous-v0'

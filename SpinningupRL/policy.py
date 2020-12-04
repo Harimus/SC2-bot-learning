@@ -30,16 +30,23 @@ def fcnn_policy(layer_sizes, activation_function=nn.Tanh, output_activation=nn.I
 class BasicPolicy(nn.Module):
 
     def __init__(self, observation_space, action_space, hidden_layers=(30, 20),  network=fcnn_policy,
-                 activation=nn.Tanh, output_activation=nn.Identity):
+                 activation=nn.Tanh, output_activation=nn.Identity, discrete=True):
         super().__init__()
-        self.policy = network([observation_space]+list(hidden_layers)+[action_space], activation_function=activation, output_activation=output_activation)
-
+        self.policy = network([observation_space]+list(hidden_layers)+[action_space],
+                              activation_function=activation, output_activation=output_activation)
+        self.discrete_action = discrete
+        log_std = -0.5 * np.ones(action_space, dtype=np.float32)
+        self.log_std = torch.nn.Parameter( torch.as_tensor(log_std))
     def get_policy(self, obs):
         logits = self.policy(obs)
-        return Categorical(logits=logits)
+        if self.discrete_action:
+            return Categorical(logits=logits)
+        else:
+            return Normal(logits, self.log_std.exp())
+
 
     def forward(self, obs: torch.Tensor, act=None):
-        pi: Categorical = self.get_policy(obs)
+        pi = self.get_policy(obs)
 
         log_act = None
         if act is not None:
@@ -60,12 +67,13 @@ class BasicPolicy(nn.Module):
 
 class ActorCriticPolicy(nn.Module):
 
-    def __init__(self, observation_space, action_space, hidden_layer=(30, 20), actor=BasicPolicy, critic=fcnn_policy):
+    def __init__(self, observation_space, action_space, hidden_layer=(30, 20),
+                 actor=BasicPolicy, critic=fcnn_policy, discrete=True):
         super().__init__()
         # The policy, "actor"
-        self.pi = actor(observation_space.shape[0], action_space.n, hidden_layers=hidden_layer)
+        self.pi = actor(observation_space, action_space, hidden_layers=hidden_layer, discrete=discrete)
         # The critic
-        self.v = critic([observation_space.shape[0]]+list(hidden_layer)+[1])
+        self.v = critic([observation_space]+list(hidden_layer)+[1])
 
     def step(self, obs):
         with torch.no_grad():

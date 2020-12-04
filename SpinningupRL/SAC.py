@@ -29,7 +29,7 @@ def plot(step, reward, title, epoch=1000000):
     ax.set_xlabel('Steps')
     ax.set_ylabel('Rewards')
     ax.set_xlim((0, epoch))
-    ax.set_ylim((-2000, 100))
+    ax.set_ylim((0, 10000))
     fig.savefig('./'+title + '.png')
 
 class TanhNormal(Distribution):
@@ -129,7 +129,7 @@ def sac(policy=SoftActorCritic, epoch=100000, gamma=0.99, polyak=0.995,
         off_policy_batch_size=128, reward_scale=1, initial_exploration=10000,
         update_interval=1, test_interval=1000, in_agent=None):
 
-    envname = 'MountainCarContinuous-v0' #'Pendulum-v0'
+    envname = 'Humanoid-v2'#'MountainCarContinuous-v0' #'Pendulum-v0
     env = gym.make(envname)
 
 
@@ -149,15 +149,14 @@ def sac(policy=SoftActorCritic, epoch=100000, gamma=0.99, polyak=0.995,
     def test(actor, render=False):
         with torch.no_grad():
             actor.eval()
-            env = gym.make(envname)
             state, total_reward, done = env.reset(), 0, False
 
             while not done:
                 action = actor(torch.as_tensor(state, dtype=torch.float32)).mean
+                env.render() if render is True else _
                 state, reward, done, _ = env.step(scale_action(action.numpy()))
                 total_reward += reward
-                env.render() if render is True else _
-            env.close()
+            #env.close() #crashes mujoco_py
             #plot_mountain_cart(agent) if render else _
             actor.train()
         return total_reward
@@ -173,8 +172,8 @@ def sac(policy=SoftActorCritic, epoch=100000, gamma=0.99, polyak=0.995,
 
     def update(episodes, update_target=False):
         states = torch.as_tensor([ep[0] for ep in episodes], dtype=torch.float32)
-        actions = torch.as_tensor([ep[1] for ep in episodes], dtype=torch.float32)
-        actions = actions.unsqueeze(-1)
+        actions = torch.stack([ep[1] for ep in episodes])
+        #actions = actions.unsqueeze(-1)
         rewards = torch.as_tensor([ep[2] for ep in episodes], dtype=torch.float32)
         next_states = torch.as_tensor([ep[3] for ep in episodes], dtype=torch.float32)
         is_done = torch.as_tensor([ep[-1] for ep in episodes], dtype=torch.float32)
@@ -220,7 +219,7 @@ def sac(policy=SoftActorCritic, epoch=100000, gamma=0.99, polyak=0.995,
         with torch.no_grad():
             if i < initial_exploration:
                 # uniform distribution action taken for better exploration at the beginning roughtly 10%
-                action = torch.tensor(np.random.rand(action_space)*2 - 1)
+                action = torch.tensor(np.random.rand(action_space)*2 - 1, dtype=torch.float32)
             else:
                 action = agent(torch.as_tensor(state, dtype=torch.float32)).sample()
             next_state, reward, done, _ = env.step(scale_action(action.numpy()))
@@ -234,7 +233,7 @@ def sac(policy=SoftActorCritic, epoch=100000, gamma=0.99, polyak=0.995,
             update(batch, True)
 
         if i > initial_exploration and i % test_interval == 0:
-            total_reward = test(agent, render=True if i % (epoch/5) == 0 else False)
+            total_reward = test(agent, render=True)# if i % (epoch/10) else False)
             plot(i, total_reward, "SoftActorCritic", epoch)
             if i % (epoch / 100) == 0:
                 progress_bar.set_description('Step: %i | Reward: %f' % (i, total_reward))
@@ -243,5 +242,6 @@ def sac(policy=SoftActorCritic, epoch=100000, gamma=0.99, polyak=0.995,
 
 if __name__ == '__main__':
     #ag = sac(epoch=10000, reward_scale=1, alpha=0.4)
-    ag = sac(alpha=0.8, reward_scale=5)
+    ag = sac(alpha=0.8, off_policy_batch_size=400)
+
     #ag = sac(in_agent=ag)

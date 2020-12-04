@@ -9,6 +9,11 @@ from policy import ActorCriticPolicy
 import scipy.signal
 import numpy as np
 
+
+def moving_avg(x, w):
+    return np.convolve(x.squeeze(), np.ones(w), 'valid')/w
+
+
 def discount_cumsum(x, discount):
     """
     magic from rllab for computing discounted cumulative sums of vectors.
@@ -36,10 +41,10 @@ def gae(episodes, values, gamma, lam):
 
 def vpg(policy=ActorCriticPolicy, epoch=10000, gamma=0.99, lam=0.97,
         actor_lr=1e-3, critic_lr=1e-3):
-    env = gym.make('CartPole-v0') #'MountainCar-v0')
+    env = gym.make('Pendulum-v0') #'MountainCar-v0')
     observation_space = env.observation_space.shape[0]
-    action_space = env.action_space.n
-    agent = policy(observation_space, action_space)
+    action_space = env.action_space.shape[0]
+    agent = policy(observation_space, action_space, discrete=False)
     actor_optimizer = Adam(agent.pi.parameters(), lr=actor_lr)
     critic_optimizer = Adam(agent.v.parameters(), lr=critic_lr)
 
@@ -66,9 +71,11 @@ def vpg(policy=ActorCriticPolicy, epoch=10000, gamma=0.99, lam=0.97,
     ax.set_title(env.spec._env_name + " total reward per episode")
     ax.set_ylabel("reward")
     ax.set_xlabel("episodes")
+    ax.set_xlim([0, epoch])
+    ax.set_ylim([-2000, 0])
     rewards_per_episode=[]
     percent = 0
-    for i in range(epoch):
+    for i in range(1, epoch+1):
         done = False
         trajectory = []
         values  = []
@@ -82,7 +89,7 @@ def vpg(policy=ActorCriticPolicy, epoch=10000, gamma=0.99, lam=0.97,
 
             if(i == epoch-1):
                 env.render()
-            next_state, reward, done, _ = env.step(action)
+            next_state, reward, done, _ = env.step([action])
             episode = (state, action.item(), reward, next_state)
             trajectory.append(episode)
             values.append(val[0])
@@ -103,11 +110,13 @@ def vpg(policy=ActorCriticPolicy, epoch=10000, gamma=0.99, lam=0.97,
         rewards_per_episode.append(cum_reward)
         log_p_old = log_p
         if i % (epoch / 100) == 0:
-            print(percent, "% done.", ' loss_pi: ', loss_pi.item(), ' loss_v: ', loss_v.item(),  ' approx kl: ', pi_info['kl'], ' entropy: ', pi_info['ent'])
             percent += 1
-
-    ax.plot([*range(len(rewards_per_episode))], rewards_per_episode)
-    plt.show()
+            print(percent, "% done.", ' loss_pi: ', loss_pi.item(), ' loss_v: ', loss_v.item(),  ' approx kl: ', pi_info['kl'], ' entropy: ', pi_info['ent'])
+            if (percent % 10 ) == 0:
+                w = 5
+                plot_rewards= moving_avg(np.array(rewards_per_episode), w)
+                ax.plot(np.array(range(1, len(plot_rewards)+1)), plot_rewards)
+                fig.show()
 
 
 if __name__ == '__main__':
